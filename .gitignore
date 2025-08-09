@@ -149,6 +149,7 @@ venv.bak/
 
 # App
 guide.txt
+contents.json
 
 # Spyder project settings
 .spyderproject
