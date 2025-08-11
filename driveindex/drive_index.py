@@ -14,7 +14,7 @@ __version__ = "0.1.0"
 
 from typing import TypedDict, List
 from wcwidth import wcswidth
-from ansi import colorize, BRIGHT_CYAN, BRIGHT_BLUE
+from ansi import colorize, BRIGHT_CYAN, BRIGHT_BLUE, GRAY_40
 import json
 import argparse
 import logging
@@ -226,6 +226,7 @@ def handle_search(index_path: str, keyword: str):
         if matched := [
             f for f in files if keyword.lower() in normalize(f["name"]).lower()
         ]:
+            matched.sort(key=lambda f: f["name"].lower())
             entry["files"] = matched
             results.append(entry)
 
@@ -233,19 +234,24 @@ def handle_search(index_path: str, keyword: str):
         print(f"No results found for: '{keyword}'")
         return
 
+    results.sort(key=lambda e: e["folder"]["name"].lower())
+
     for result in results:
         print(
             f"<Directory '{colorize(result['folder']['name'], BRIGHT_CYAN)}' "
             f"has {result['folder']['file_count']} file(s)> ",
-            end="",
+            f"{colorize(extract_volume_name(result['path']), BRIGHT_BLUE)}",
         )
-        print(f"{colorize(extract_volume_name(result['path']), BRIGHT_BLUE)}")
-
+        even_number_cell = False
         for file in result["files"]:
-            print(
-                f"\t{pad_to_width(file['name'], MAX_FILENAME_WIDTH)}"
-                f"{human_readable_size(file['size']):>{MAX_SIZE_WIDTH}}"
+            cell_str = (
+                "\t"
+                + pad_to_width(file["name"], MAX_FILENAME_WIDTH)
+                + human_readable_size(file["size"]).rjust(MAX_SIZE_WIDTH)
             )
+            ## 짝수 번째 셀일 경우 밝은 회색으로 출력
+            print(colorize(cell_str, GRAY_40) if even_number_cell else cell_str)
+            even_number_cell = not even_number_cell
 
 
 # --------------------------------------------------
@@ -258,7 +264,12 @@ def extract_volume_name(path: str) -> str:
 
 # --------------------------------------------------
 def human_readable_size(size_bytes: int) -> str:
-    """바이트 단위를 KB, MB, GB, TB 등으로 변환"""
+    """
+    바이트 단위를 KB, MB, GB, TB 등으로 변환
+    os.path.getsize()로 얻은 값이 넘어오는데 아래의 코드를 통해 파일 용량을 산출해도
+    맥 파인더 앱의 결과와 다르다. 애플이 파일 용량을 어떻게 산정하지는 알 수 없기 때문에
+    이것이 최선이다.
+    """
 
     if size_bytes < 1024:
         return f"{size_bytes} B"
