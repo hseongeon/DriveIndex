@@ -4,16 +4,18 @@ Author : seong-eon Hwang (hseongeon@gmail.com)
 Date   : 2025-08-03
 
 Purpose:
-DriveIndex is a command-line tool that scans external drives to index folder and file
-information, helping users keep track of where their data is stored. It allows users
-to search for folders by name and see which drive they belong to, making large
-collections of files easier to manage.
+    DriveIndex is a command-line tool that scans external drives to index directory
+    and file information, helping users keep track of where their data is stored.
+    It is designed for collections where data does not change frequently. Once indexed,
+    users can search for directories and files by name and see which drive they
+    belong to, even without connecting the drive, making large collections of data
+    easier to manage.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 from typing import TypedDict, List
-from wcwidth import wcswidth
+from wcwidth import wcswidth  # type: ignore[import]
 from ansi import colorize, BRIGHT_CYAN, BRIGHT_BLUE, GRAY_40
 import json
 import argparse
@@ -24,7 +26,7 @@ import unicodedata
 
 
 # --- type hint ---
-class FolderMeta(TypedDict):
+class DirectoryMeta(TypedDict):
     name: str
     file_count: int
 
@@ -34,9 +36,9 @@ class FileMeta(TypedDict):
     size: int
 
 
-class FolderInfo(TypedDict):
+class DirectoryInfo(TypedDict):
     path: str
-    folder: FolderMeta
+    directory: DirectoryMeta
     files: List[FileMeta]
 
 
@@ -63,7 +65,7 @@ def get_args():
     )
 
     subparsers = parser.add_subparsers(
-        title="Commands",
+        title="commands",
         dest="command",
         required=True,
         help="Available commands",
@@ -71,32 +73,32 @@ def get_args():
 
     # ---- scan subcommand ----
     scan_parser = subparsers.add_parser(
-        "scan", help="Scan connected external drive and save index"
+        "scan", help="scan connected external drive and save index"
     )
     scan_parser.add_argument(
         "filename",
         metavar="OUTPUT_JSON",
         type=str,
-        help="Path to save the generated JSON index (e.g. contents.json)",
+        help="path to save the generated JSON index",
     )
 
     # ---- search subcommand ----
     search_parser = subparsers.add_parser(
-        "search", help="Search folders in an existing index"
+        "search", help="search directories and files in an existing index"
     )
     search_parser.add_argument(
         "filename",
         metavar="INPUT_JSON",
         type=str,
-        help="Path to the existing JSON index file",
+        help="path to the existing JSON index file",
     )
     search_parser.add_argument(
         "-k",
         "--keyword",
-        metavar="KEYWORD",
+        metavar="KW",
         type=str,
         required=True,
-        help="Keyword to search for (partial match supported)",
+        help="keyword to search for (partial match supported)",
     )
 
     return parser.parse_args()
@@ -122,7 +124,6 @@ def handle_scan(output_path: str):
     volumes_root = "/Volumes"
     excluded = {"Macintosh HD", "com.apple.TimeMachine.localsnapshots"}
 
-    # 외장하드 후보 찾기
     try:
         volumes = [v for v in os.listdir(volumes_root) if v not in excluded]
     except FileNotFoundError:
@@ -135,23 +136,32 @@ def handle_scan(output_path: str):
     if not volumes:
         logging.info("No external drives detected.")
         sys.exit(1)
-    elif len(volumes) > 1:
-        logging.info(
-            f"Multiple external drives detected: {volumes} "
-            "Please connect only one external drive and try again."
-        )
-        sys.exit(1)
+    elif len(volumes) == 1:
+        drive_path = os.path.join(volumes_root, volumes[0])
+        print(f"An external drive detected: {drive_path}")
+    else:
+        for i, volume in enumerate(volumes, start=1):
+            print(f"{i}. {os.path.join(volumes_root, volume)}")
+        while True:
+            selected = input("Select the drive number to scan: ").strip()
+            if not selected.isdigit():
+                print("Please enter a valid number.")
+                continue
 
-    drive_path = os.path.join(volumes_root, volumes[0])
-    print(f"An external drive detected: {drive_path}")
+            selected_int = int(selected)
+            if 1 <= selected_int <= len(volumes):
+                drive_path = os.path.join(volumes_root, volumes[selected_int - 1])
+                break
+            else:
+                print(f"Please enter a number between 1 and {len(volumes)}.")
 
-    results: List[FolderInfo] = []
+    results: List[DirectoryInfo] = []
 
     if os.path.exists(output_path):
         try:
             with open(output_path, "r", encoding="utf-8") as fh:
                 existing_data = json.load(fh)
-                results.extend(existing_data)  # 기존 데이터 추가
+                results.extend(existing_data)  # add existing data
             logging.info(f"Existing index loaded from: {output_path}")
         except json.JSONDecodeError:
             logging.info(
@@ -166,16 +176,16 @@ def handle_scan(output_path: str):
 
         valid_filenames = [f for f in filenames if f not in IGNORED_FILES]
         if not valid_filenames:
-            continue  # 유효한 파일이 하나도 없으면 폴더 자체 무시
+            continue  # skip directories with no valid files
 
-        folder_meta: FolderMeta = {
+        directory_meta: DirectoryMeta = {
             "name": os.path.basename(dirpath),
             "file_count": len(valid_filenames),
         }
 
-        folder_info: FolderInfo = {
+        directory_info: DirectoryInfo = {
             "path": os.path.abspath(dirpath),
-            "folder": folder_meta,
+            "directory": directory_meta,
             "files": [],
         }
 
@@ -184,13 +194,12 @@ def handle_scan(output_path: str):
             try:
                 file_size = os.path.getsize(file_path)
             except OSError:
-                continue  # 접근 불가 파일 무시
+                continue  # ignore inaccessible files
 
-            folder_info["files"].append({"name": filename, "size": file_size})
+            directory_info["files"].append({"name": filename, "size": file_size})
 
-        results.append(folder_info)
+        results.append(directory_info)
 
-    # JSON으로 저장
     try:
         with open(output_path, "w", encoding="utf-8") as fh:
             json.dump(results, fh, indent=4, ensure_ascii=False)
@@ -202,27 +211,25 @@ def handle_scan(output_path: str):
 
 # --------------------------------------------------
 def handle_search(index_path: str, keyword: str):
-    """Search index JSON for folders or files containing the keyword"""
+    """Search index JSON for directories or files containing the keyword"""
 
     try:
         with open(index_path, "r", encoding="utf-8") as fh:
-            index: List[FolderInfo] = json.load(fh)
+            index: List[DirectoryInfo] = json.load(fh)
     except Exception as e:
         logging.error(f"Failed to load index JSON file: {e}")
         sys.exit(1)
 
-    results: List[FolderInfo] = []
+    results: List[DirectoryInfo] = []
 
     for entry in index:
-        folder_name = normalize(entry["folder"]["name"]).lower()
+        directory_name = normalize(entry["directory"]["name"]).lower()
         files = entry["files"]
 
-        # 폴더 이름에 검색어가 포함되면 추가
-        if keyword in folder_name:
+        if keyword in directory_name:
             results.append(entry)
             continue
 
-        # 파일 이름 중 하나라도 포함되면 추가
         if matched := [
             f for f in files if keyword.lower() in normalize(f["name"]).lower()
         ]:
@@ -234,13 +241,13 @@ def handle_search(index_path: str, keyword: str):
         print(f"No results found for: '{keyword}'")
         return
 
-    results.sort(key=lambda e: e["folder"]["name"].lower())
+    results.sort(key=lambda e: e["directory"]["name"].lower())
 
     for result in results:
         print(
-            f"<Directory '{colorize(result['folder']['name'], BRIGHT_CYAN)}' "
-            f"has {result['folder']['file_count']} file(s)> ",
-            f"{colorize(extract_volume_name(result['path']), BRIGHT_BLUE)}",
+            f"<Directory '{colorize(result['directory']['name'], BRIGHT_CYAN)}' "
+            f"has {result['directory']['file_count']} file(s)> "
+            f"{colorize(extract_volume_name(result['path']), BRIGHT_BLUE)}"
         )
         even_number_cell = False
         for file in result["files"]:
@@ -249,13 +256,18 @@ def handle_search(index_path: str, keyword: str):
                 + pad_to_width(file["name"], MAX_FILENAME_WIDTH)
                 + human_readable_size(file["size"]).rjust(MAX_SIZE_WIDTH)
             )
-            ## 짝수 번째 셀일 경우 밝은 회색으로 출력
+            ## use light gray for even rows
             print(colorize(cell_str, GRAY_40) if even_number_cell else cell_str)
             even_number_cell = not even_number_cell
 
 
 # --------------------------------------------------
 def extract_volume_name(path: str) -> str:
+    """
+    Extract the volume name from a given file path, returning "(unknown)"
+    if it cannot be determined.
+    """
+
     parts = os.path.normpath(path).split(os.sep)
     if len(parts) >= 3 and parts[1] == "Volumes":
         return parts[2]
@@ -265,10 +277,8 @@ def extract_volume_name(path: str) -> str:
 # --------------------------------------------------
 def human_readable_size(size_bytes: int) -> str:
     """
-    바이트 단위를 KB, MB, GB, TB 등으로 변환
-    os.path.getsize()로 얻은 값이 넘어오는데 아래의 코드를 통해 파일 용량을 산출해도
-    맥 파인더 앱의 결과와 다르다. 애플이 파일 용량을 어떻게 산정하지는 알 수 없기 때문에
-    이것이 최선이다.
+    Convert a file size in bytes to a human-readable string
+    using KB, MB, GB, TB, or PB units.
     """
 
     if size_bytes < 1024:
@@ -283,12 +293,36 @@ def human_readable_size(size_bytes: int) -> str:
 
 # --------------------------------------------------
 def pad_to_width(text: str, width: int) -> str:
+    """Truncate or pad a string to fit a given display width."""
+
     text_width = wcswidth(text)
-    return text + " " * (width - text_width)
+    if text_width <= width:
+        # pad with spaces
+        return text + " " * (width - text_width)
+
+    # need to truncate
+    ellipsis = "..."
+    ellipsis_width = wcswidth(ellipsis)
+    truncated = ""
+    current_width = 0
+
+    for ch in text:
+        ch_w = wcswidth(ch)
+        if current_width + ch_w + ellipsis_width > width:
+            break
+        truncated += ch
+        current_width += ch_w
+
+    return truncated + ellipsis + " " * (width - (current_width + ellipsis_width))
 
 
 # --------------------------------------------------
 def normalize(s: str) -> str:
+    """
+    Normalize a string to NFC (Canonical Composition) form for
+    consistent Unicode representation.
+    """
+
     return unicodedata.normalize("NFC", s)
 
 
