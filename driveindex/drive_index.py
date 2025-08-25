@@ -25,7 +25,7 @@ import sys
 import unicodedata
 
 
-# --- type hint ---
+# --- Type hint ---
 class DirectoryMeta(TypedDict):
     name: str
     file_count: int
@@ -58,7 +58,7 @@ MAX_SIZE_WIDTH = 10
 
 # --------------------------------------------------
 def get_args():
-    """Get command-line arguments"""
+    """Get command-line arguments."""
 
     parser = argparse.ArgumentParser(
         description="Index external drive contents or search from existing index"
@@ -71,7 +71,7 @@ def get_args():
         help="Available commands",
     )
 
-    # ---- scan subcommand ----
+    # ---- Scan subcommand ----
     scan_parser = subparsers.add_parser(
         "scan", help="scan connected external drive and save index"
     )
@@ -79,10 +79,12 @@ def get_args():
         "filename",
         metavar="OUTPUT_JSON",
         type=str,
+        nargs="?",
         help="path to save the generated JSON index",
+        default="contents.json",
     )
 
-    # ---- search subcommand ----
+    # ---- Search subcommand ----
     search_parser = subparsers.add_parser(
         "search", help="search directories and files in an existing index"
     )
@@ -90,14 +92,14 @@ def get_args():
         "filename",
         metavar="INPUT_JSON",
         type=str,
+        nargs="?",
         help="path to the existing JSON index file",
+        default="contents.json",
     )
     search_parser.add_argument(
-        "-k",
-        "--keyword",
-        metavar="KW",
+        "keyword",
+        metavar="KEYWORD",
         type=str,
-        required=True,
         help="keyword to search for (partial match supported)",
     )
 
@@ -119,7 +121,7 @@ def main():
 
 # --------------------------------------------------
 def handle_scan(output_path: str):
-    """Scan connected external drive and save index to JSON"""
+    """Scan connected external drive and save index to JSON."""
 
     volumes_root = "/Volumes"
     excluded = {"Macintosh HD", "com.apple.TimeMachine.localsnapshots"}
@@ -161,7 +163,7 @@ def handle_scan(output_path: str):
         try:
             with open(output_path, "r", encoding="utf-8") as fh:
                 existing_data = json.load(fh)
-                results.extend(existing_data)  # add existing data
+                results.extend(existing_data)  # Add existing data.
             logging.info(f"Existing index loaded from: {output_path}")
         except json.JSONDecodeError:
             logging.info(
@@ -176,7 +178,7 @@ def handle_scan(output_path: str):
 
         valid_filenames = [f for f in filenames if f not in IGNORED_FILES]
         if not valid_filenames:
-            continue  # skip directories with no valid files
+            continue  # Skip directories with no valid files.
 
         directory_meta: DirectoryMeta = {
             "name": os.path.basename(dirpath),
@@ -194,7 +196,7 @@ def handle_scan(output_path: str):
             try:
                 file_size = os.path.getsize(file_path)
             except OSError:
-                continue  # ignore inaccessible files
+                continue  # Ignore inaccessible files.
 
             directory_info["files"].append({"name": filename, "size": file_size})
 
@@ -211,7 +213,7 @@ def handle_scan(output_path: str):
 
 # --------------------------------------------------
 def handle_search(index_path: str, keyword: str):
-    """Search index JSON for directories or files containing the keyword"""
+    """Search index JSON for directories or files containing the keyword."""
 
     try:
         with open(index_path, "r", encoding="utf-8") as fh:
@@ -246,7 +248,7 @@ def handle_search(index_path: str, keyword: str):
     for result in results:
         print(
             f"<Directory '{colorize(result['directory']['name'], BRIGHT_CYAN)}' "
-            f"has {result['directory']['file_count']} file(s)> "
+            f"has {result['directory']['file_count']} file(s).> "
             f"{colorize(extract_volume_name(result['path']), BRIGHT_BLUE)}"
         )
         even_number_cell = False
@@ -256,7 +258,7 @@ def handle_search(index_path: str, keyword: str):
                 + pad_to_width(file["name"], MAX_FILENAME_WIDTH)
                 + human_readable_size(file["size"]).rjust(MAX_SIZE_WIDTH)
             )
-            ## use light gray for even rows
+            ## Use light gray for even rows.
             print(colorize(cell_str, GRAY_40) if even_number_cell else cell_str)
             even_number_cell = not even_number_cell
 
@@ -297,10 +299,10 @@ def pad_to_width(text: str, width: int) -> str:
 
     text_width = wcswidth(text)
     if text_width <= width:
-        # pad with spaces
+        # Pad with spaces
         return text + " " * (width - text_width)
 
-    # need to truncate
+    # Need to truncate
     ellipsis = "..."
     ellipsis_width = wcswidth(ellipsis)
     truncated = ""

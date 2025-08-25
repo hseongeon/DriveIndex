@@ -147,7 +147,7 @@ venv.bak/
 # macOS
 .DS_Store
 
-# App
+# for this app
 guide.txt
 contents.json
 
